@@ -1,11 +1,17 @@
-## Nytt
+## Endret
 
-**Hjemme og hytte.** Hvert sted merkes nå som *Hjemme* eller *Hytte* i oppsettet. Den som ikke er registrert på en hytte, regnes som hjemme – så Oslo, Strömstad og Toten henger sammen i én oversikt.
+**Hvert sted bruker sine egne posisjonsbrytere.** På betyr her, av betyr borte – bryteren i Oslo sier om du er i Oslo, den på Toten om du er på Toten. Stedet en Home Assistant står på, registrerer oppholdene sine i kalenderen, også når stedet er hjemmet.
 
-**Helgeoversikt.** `sensor.<hjemsted>_helger` viser de siste 16 helgene med hvem som var hvor, lørdag og søndag sett under ett. Dro noen hjem søndag, står det «Strömstad → Oslo». Attributtet `hvor_er_vi_naa` svarer for i dag.
+**De andre stedene leses fra kalenderen.** Legg dem inn med bare navn og kalender; hvem som var der kommer fra hendelsene «Sted – Navn», og navnene plukkes opp fra hendelsene selv.
 
-**Ny tjeneste `ki_hyttebesok.hvor_var_vi`** – spør med `uke: 32`, en `dato:`, eller uten noe for de siste helgene. Svaret kommer som `response_variable`.
+Rollen *Hjemme* eller *Hytte* handler nå bare om farger og helgeoversikten. Registreringen styres av om stedet har brytere.
 
-## Merk
+Har et hjem uten egne hendelser i kalenderen, regnes oppholdene der fortsatt ut som dagene ingen hytte dekker – som reserve.
 
-Eksisterende oppføringer står som «Hytte» til du endrer dem. Gå inn på Oslo-oppføringen og sett den til *Hjemme*, ellers får du ingen helgeoversikt.
+## Oppsett med flere instanser
+
+| | Oslo | Strömstad | Toten |
+|---|---|---|---|
+| **Oslo-instansen** | egne brytere, registrerer | tomt, leser | tomt, leser |
+| **Strömstad-instansen** | tomt, leser | egne brytere, registrerer | tomt, leser |
+| **Toten-instansen** | tomt, leser | tomt, leser | egne brytere, registrerer |

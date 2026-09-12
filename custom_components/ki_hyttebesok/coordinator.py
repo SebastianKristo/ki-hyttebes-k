@@ -19,6 +19,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_FORSINKELSE,
+    CONF_SKRIV,
     CONF_HISTORIKK,
     CONF_ROLLE,
     DOMAIN,
@@ -76,6 +77,11 @@ class HytteMotor:
         self.oppsett = oppsett
         self.sted: str = oppsett.get("sted") or "Hytta"
         self.rolle: str = oppsett.get(CONF_ROLLE) or "hytte"   # hjem | hytte
+        # Med flere Home Assistant-instanser er det bare den som står på stedet
+        # som registrerer opphold. De andre leser de samme hendelsene.
+        self.skriver: bool = (oppsett.get(CONF_SKRIV)
+                              if oppsett.get(CONF_SKRIV) is not None
+                              else bool(oppsett.get("personer")))
         self.kalender: str = oppsett.get("kalender") or ""
         self.personer: list[Person] = []
         self.opphold: list[Opphold] = []
@@ -88,6 +94,8 @@ class HytteMotor:
 
     # ------------------------------------------------------------------ start
     async def start(self) -> None:
+        if not (self.oppsett.get("personer") or []):
+            await self._les_kalender(None)      # navnene kommer fra hendelsene
         self._les_personer()
         lagret = await self._lager.async_load() or {}
         for p in self.personer:
@@ -118,6 +126,18 @@ class HytteMotor:
 
     def _les_personer(self) -> None:
         self.personer = []
+        if not (self.oppsett.get("personer") or []):
+            # ingen brytere: navnene kommer fra kalenderhendelsene
+            navn = []
+            for o in self.opphold:
+                if o.person not in navn:
+                    navn.append(o.person)
+            for k in self.kommende:
+                if k.get("person") and k["person"] not in navn:
+                    navn.append(k["person"])
+            for i, n in enumerate(navn):
+                self.personer.append(Person(navn=n, entity="", farge=FARGER[i % len(FARGER)]))
+            return
         for i, rad in enumerate(self.oppsett.get("personer") or []):
             if isinstance(rad, str):
                 rad = {"entity": rad}
@@ -134,18 +154,43 @@ class HytteMotor:
 
     # ------------------------------------------------------------ tilstedeværelse
     def _pa_stedet(self, p: Person) -> bool:
+        """Hvert sted har sine egne posisjonsbrytere: på = her, av = borte.
+        Steder denne instansen bare leser, avgjøres av kalenderen."""
+        if not p.entity:
+            return self._i_kalenderen(p.navn)
         st = self.hass.states.get(p.entity)
         return bool(st and st.state in ("on", "home", "true"))
 
+    def _i_kalenderen(self, navn: str) -> bool:
+        """Er personen registrert her i dag, ifølge kalenderen?"""
+        i_dag = dt_util.now().date()
+        return any(o.start <= i_dag <= o.slutt and o.person.lower() == str(navn).lower()
+                   for o in self.opphold)
+
     def her_naa(self) -> list[Person]:
         return [p for p in self.personer if self._pa_stedet(p)]
+
+    def _paa_hytte_i_dag(self) -> set[str]:
+        """Hvem kalenderen sier er på en av hyttene akkurat nå."""
+        ut: set[str] = set()
+        i_dag = dt_util.now().date()
+        for m in self.hass.data.get(DOMAIN, {}).values():
+            if m is self or m.rolle == ROLLE_HJEM:
+                continue
+            for o in m.opphold:
+                if o.start <= i_dag <= o.slutt:
+                    ut.add(o.person)
+        return ut
 
     @callback
     def _endret(self, hendelse) -> None:
         self.hass.async_create_task(self._behandle(hendelse))
 
     async def _behandle(self, hendelse) -> None:
-        """Ankomst starter et opphold, avreise skriver det til kalenderen."""
+        """Ankomst starter et opphold, avreise skriver det til kalenderen.
+        Gjelder bare steder som har egne brytere – hyttene leses fra kalenderen."""
+        if not self.skriver:
+            return
         eid = hendelse.data.get("entity_id")
         ny = hendelse.data.get("new_state")
         p = next((x for x in self.personer if x.entity == eid), None)
@@ -226,7 +271,13 @@ class HytteMotor:
                 opphold.append(Opphold(person=hvem, start=s, slutt=siste, tittel=tittel))
         opphold.sort(key=lambda x: x.start, reverse=True)
         kommende.sort(key=lambda x: x["start"])
+        # Hjemme uten egne hendelser: regn oppholdene som dagene ingen hytte dekker.
+        # Dette er reserven for oppsett der hjemmet ikke føres i kalenderen.
+        if self.rolle == ROLLE_HJEM and not opphold and self.personer:
+            opphold = self._hjemmeopphold()
         self.opphold, self.kommende = opphold, kommende
+        if not (self.oppsett.get("personer") or []):
+            self._les_personer()
         self._varsle()
 
     # ------------------------------------------------------------------ tall ut
@@ -285,12 +336,48 @@ class HytteMotor:
                 dag += timedelta(days=1)
         return ut
 
+    def _hjemmeopphold(self) -> list[Opphold]:
+        """Hjemme har ingen kalenderhendelser – oppholdene er dagene
+        personen ikke var registrert på en hytte."""
+        dager = int(self.oppsett.get(CONF_HISTORIKK) or STD_HISTORIKK)
+        nå = dt_util.now().date()
+        start = nå - timedelta(days=dager)
+        borte: dict[str, set[date]] = {}
+        for m in self.hass.data.get(DOMAIN, {}).values():
+            if m is self or m.rolle == ROLLE_HJEM:
+                continue
+            for o in m.opphold:
+                for i in range(o.netter):
+                    d = o.start + timedelta(days=i)
+                    if start <= d <= nå:
+                        borte.setdefault(o.person, set()).add(d)
+        ut: list[Opphold] = []
+        for p in self.personer:
+            ute = borte.get(p.navn, set())
+            d = start
+            blokk: date | None = None
+            forrige: date | None = None
+            while d <= nå:
+                hjemme = d not in ute
+                if hjemme and blokk is None:
+                    blokk = d
+                if not hjemme and blokk is not None:
+                    ut.append(Opphold(person=p.navn, start=blokk, slutt=forrige or blokk, tittel="Hjemme"))
+                    blokk = None
+                if hjemme:
+                    forrige = d
+                d += timedelta(days=1)
+            if blokk is not None:
+                ut.append(Opphold(person=p.navn, start=blokk, slutt=nå, tittel="Hjemme"))
+        ut.sort(key=lambda x: x.start, reverse=True)
+        return ut
+
     def oversikt(self) -> dict[str, Any]:
         nå = dt_util.now().date()
         fra, til = nå - timedelta(days=200), nå + timedelta(days=200)
         her = self.her_naa()
         return {
-            "sted": self.sted, "rolle": self.rolle, "kalender": self.kalender,
+            "sted": self.sted, "rolle": self.rolle, "skriver": self.skriver, "kalender": self.kalender,
             "her_naa": [{"navn": p.navn, "farge": p.farge, "siden": p.ankom} for p in her],
             "personer": [{
                 "navn": p.navn, "farge": p.farge, "entity": p.entity, "her": self._pa_stedet(p),

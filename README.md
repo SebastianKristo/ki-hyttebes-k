@@ -36,8 +36,34 @@ Den erstatter en pakke med `input_datetime`-hjelpere, template-sensorer og to au
 ## Hjemme og hytte
 
 Hvert sted merkes som **Hjemme** eller **Hytte** i oppsettet. Oslo er hjemme, Strömstad og Toten er hytter.
-Det gir integrasjonen en enkel regel: den som ikke er registrert på en hytte, var hjemme. Dermed kan du
-spørre om en hvilken som helst helg og få svar for alle tre.
+
+Hvert sted har sine egne posisjonsbrytere: på betyr her, av betyr borte. Bryteren i Oslo sier om du er i
+Oslo, den på Toten om du er på Toten. **Stedet denne Home Assistant-en står på** settes opp med disse
+bryterne og registrerer oppholdene i kalenderen.
+
+**De andre stedene** legges inn med bare navn og kalender. Hvem som var der leses fra hendelsene
+«Strömstad – Sebastian», og navnene plukkes opp fra hendelsene selv.
+
+Sammen gir det svar for alle tre stedene på en hvilken som helst helg.
+
+### Flere Home Assistant-instanser
+
+Har hytta sin egen Home Assistant, installerer du integrasjonen der også. Da er det instansen som står på
+stedet som registrerer oppholdene – med sine egne tilstedeværelsessensorer – mens de andre instansene leser
+de samme hendelsene fra den delte kalenderen.
+
+Bryteren **«Denne Home Assistant-en registrerer opphold her»** styrer det. Den slår seg på av seg selv når du
+har valgt posisjonsbrytere, og skal stå av på de stedene instansen bare leser.
+
+| | Oslo | Strömstad | Toten |
+|---|---|---|---|
+| **Oslo-instansen** | egne brytere, registrerer | tomt, leser | tomt, leser |
+| **Strömstad-instansen** | tomt, leser | egne brytere, registrerer | tomt, leser |
+| **Toten-instansen** | tomt, leser | tomt, leser | egne brytere, registrerer |
+
+Rollen *Hjemme* eller *Hytte* handler bare om farger og helgeoversikten – registreringen styres av bryterne.
+
+Alle tre peker på den samme Google-kalenderen, og alle tre ser hele historikken.
 
 | | |
 |---|---|
@@ -76,7 +102,7 @@ Legg til én oppføring per sted.
 |---|---|
 | **Sted** | Strömstad, Toten, Oslo … Navnet brukes i hendelsestittelen og til å skille stedene i en delt kalender |
 | **Kalender** | Google-kalenderen som skal skrives til og leses fra |
-| **Brytere** | Én per person: `switch.sebastian_posisjon_hjemme_borte`, `person.rune`, `device_tracker.cybele` … |
+| **Brytere** | Posisjonsbryterne for dette stedet, én per person. Tomt for steder instansen bare leser |
 | **Navn** | Navnene i samme rekkefølge, skilt med komma. Tomt gir navnet fra entiteten |
 | **Forsinkelse** | Minutter borte før avreisen regnes som ekte. Standard 10 – hindrer at en tur på butikken avslutter oppholdet |
 | **Historikk** | Hvor mange dager bakover kalenderen leses. Standard 400, så du får med fjoråret |

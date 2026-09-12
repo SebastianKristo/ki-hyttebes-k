@@ -12,6 +12,7 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_FORSINKELSE,
     CONF_ROLLE,
+    CONF_SKRIV,
     CONF_HISTORIKK,
     CONF_KALENDER,
     CONF_PERSONER,
@@ -31,10 +32,11 @@ def _skjema(d: dict[str, Any] | None = None) -> vol.Schema:
                 {"value": "hjem", "label": "Hjemme"}, {"value": "hytte", "label": "Hytte"}], mode="list")),
         vol.Required(CONF_KALENDER, default=d.get(CONF_KALENDER, "")): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="calendar")),
-        vol.Required("brytere", default=[p.get("entity") for p in (d.get(CONF_PERSONER) or [])]):
+        vol.Optional("brytere", default=[p.get("entity") for p in (d.get(CONF_PERSONER) or [])]):
             selector.EntitySelector(selector.EntitySelectorConfig(
                 domain=["switch", "binary_sensor", "input_boolean", "person", "device_tracker"], multiple=True)),
         vol.Optional("navn", default=", ".join(p.get("navn", "") for p in (d.get(CONF_PERSONER) or []))): str,
+        vol.Optional(CONF_SKRIV, default=d.get(CONF_SKRIV, bool(d.get(CONF_PERSONER)))): bool,
         vol.Optional(CONF_FORSINKELSE, default=d.get(CONF_FORSINKELSE, STD_FORSINKELSE)): vol.Coerce(int),
         vol.Optional(CONF_HISTORIKK, default=d.get(CONF_HISTORIKK, STD_HISTORIKK)): vol.Coerce(int),
     })

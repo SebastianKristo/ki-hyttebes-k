@@ -3,15 +3,16 @@
     "step": {
       "user": {
         "title": "KI Hyttebesøk",
-        "description": "Ett oppsett per sted. Merk hjemmet som «Hjemme» og hyttene som «Hytte» – da vet integrasjonen at den som ikke er på en hytte, er hjemme. Bruker du samme Google-kalender for flere steder, merkes hendelsene med stedsnavnet.",
+        "description": "Ett oppsett per sted, på hver Home Assistant. Stedet denne instansen står på, settes opp med sine egne posisjonsbrytere (på = her, av = borte) og registrerer oppholdene. De andre stedene legges inn med bare navn og kalender – de leses fra hendelsene «Sted – Navn».",
         "data": {
           "sted": "Sted (Strömstad, Toten, Oslo …)",
           "kalender": "Kalender",
-          "brytere": "Brytere som sier hvem som er på stedet",
+          "brytere": "Posisjonsbrytere for dette stedet (tomt = les fra kalenderen)",
           "navn": "Navn i samme rekkefølge, skilt med komma",
           "forsinkelse": "Minutter før avreise regnes som ekte",
           "historikk": "Dager med historikk som leses",
-          "rolle": "Hjemme eller hytte"
+          "rolle": "Hjemme eller hytte",
+          "skriv": "Denne Home Assistant-en registrerer opphold her"
         }
       }
     },
@@ -26,11 +27,12 @@
         "data": {
           "sted": "Sted",
           "kalender": "Kalender",
-          "brytere": "Brytere som sier hvem som er på stedet",
+          "brytere": "Posisjonsbrytere for dette stedet (tomt = les fra kalenderen)",
           "navn": "Navn i samme rekkefølge, skilt med komma",
           "forsinkelse": "Minutter før avreise regnes som ekte",
           "historikk": "Dager med historikk som leses",
-          "rolle": "Hjemme eller hytte"
+          "rolle": "Hjemme eller hytte",
+          "skriv": "Denne Home Assistant-en registrerer opphold her"
         }
       }
     }
