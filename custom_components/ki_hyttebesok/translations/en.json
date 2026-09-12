@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KI Hyttebesøk",
+        "description": "Ett oppsett per sted. Bruker du samme Google-kalender for flere steder, merkes hendelsene med stedsnavnet.",
+        "data": {
+          "sted": "Sted (Strömstad, Toten, Oslo …)",
+          "kalender": "Kalender",
+          "brytere": "Brytere som sier hvem som er på stedet",
+          "navn": "Navn i samme rekkefølge, skilt med komma",
+          "forsinkelse": "Minutter før avreise regnes som ekte",
+          "historikk": "Dager med historikk som leses"
+        }
+      }
+    },
+    "abort": { "already_configured": "Dette stedet er allerede satt opp." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KI Hyttebesøk",
+        "data": {
+          "sted": "Sted",
+          "kalender": "Kalender",
+          "brytere": "Brytere som sier hvem som er på stedet",
+          "navn": "Navn i samme rekkefølge, skilt med komma",
+          "forsinkelse": "Minutter før avreise regnes som ekte",
+          "historikk": "Dager med historikk som leses"
+        }
+      }
+    }
+  }
+}

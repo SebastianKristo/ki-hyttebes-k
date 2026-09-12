@@ -1,0 +1,22 @@
+les_kalender:
+  name: Les kalenderen på nytt
+  description: Henter besøkshistorikken fra kalenderen med en gang.
+
+registrer_opphold:
+  name: Registrer et opphold
+  description: Legger inn et besøk som ikke ble fanget opp automatisk.
+  fields:
+    person:
+      name: Person
+      required: true
+      selector: { text: }
+    fra:
+      name: Fra dato
+      required: true
+      selector: { date: }
+    til:
+      name: Til dato (siste natt)
+      selector: { date: }
+    sted:
+      name: Sted
+      selector: { text: }
