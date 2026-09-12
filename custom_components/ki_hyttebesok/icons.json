@@ -1,0 +1,51 @@
+{
+  "entity": {
+    "sensor": {
+      "oversikt": {
+        "default": "mdi:home-heart"
+      },
+      "netter": {
+        "default": "mdi:weather-night"
+      },
+      "siste": {
+        "default": "mdi:history"
+      },
+      "neste": {
+        "default": "mdi:calendar-arrow-right"
+      },
+      "her_naa": {
+        "default": "mdi:account-group"
+      },
+      "helger": {
+        "default": "mdi:calendar-weekend"
+      }
+    },
+    "binary_sensor": {
+      "noen_pa_stedet": {
+        "default": "mdi:home-account",
+        "state": {
+          "off": "mdi:home-outline"
+        }
+      }
+    },
+    "button": {
+      "synk": {
+        "default": "mdi:calendar-sync"
+      },
+      "lagre_naa": {
+        "default": "mdi:calendar-plus"
+      }
+    }
+  },
+  "services": {
+    "les_kalender": {
+      "service": "mdi:calendar-sync"
+    },
+    "registrer_opphold": {
+      "service": "mdi:calendar-plus"
+    },
+    "hvor_var_vi": {
+      "service": "mdi:map-marker-question"
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "domain": "ki_hyttebesok",
   "name": "KI Hyttebesøk",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "documentation": "https://github.com/SebastianKristo/ki-hyttebes-k",
   "issue_tracker": "https://github.com/SebastianKristo/ki-hyttebes-k/issues",
   "codeowners": ["@SebastianKristo"],
