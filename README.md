@@ -33,6 +33,28 @@ Den erstatter en pakke med `input_datetime`-hjelpere, template-sensorer og to au
 | <img src="https://raw.githubusercontent.com/SebastianKristo/ki-hyttebes-k/main/brand/netter.svg" width="34"> | **Riktig antall netter.** Én hendelse per person betyr at det stemmer selv når én drar søndag og resten blir til mandag. |
 | <img src="https://raw.githubusercontent.com/SebastianKristo/ki-hyttebes-k/main/brand/statistikk.svg" width="34"> | **Leser historikken tilbake.** Kalenderen leses hvert kvarter og gir netter og besøk per person, siste og neste besøk, netter per måned, og hvem som var der hver enkelt dag. |
 
+## Hjemme og hytte
+
+Hvert sted merkes som **Hjemme** eller **Hytte** i oppsettet. Oslo er hjemme, Strömstad og Toten er hytter.
+Det gir integrasjonen en enkel regel: den som ikke er registrert på en hytte, var hjemme. Dermed kan du
+spørre om en hvilken som helst helg og få svar for alle tre.
+
+| | |
+|---|---|
+| <img src="https://raw.githubusercontent.com/SebastianKristo/ki-hyttebes-k/main/brand/kalender.svg" width="34"> | **Helgeoversikt.** `sensor.<hjemsted>_helger` viser de siste 16 helgene med hvem som var hvor – lørdag og søndag sett under ett. Dro noen hjemover søndag, står det «Strömstad → Oslo». |
+| <img src="https://raw.githubusercontent.com/SebastianKristo/ki-hyttebes-k/main/brand/personer.svg" width="34"> | **Hvor er vi nå.** Samme sensor har `hvor_er_vi_naa` med ett svar per person. |
+
+```yaml
+# «Hvor var vi i helgen i uke 32?»
+action: ki_hyttebesok.hvor_var_vi
+data:
+  uke: 32
+response_variable: helg
+```
+
+Svaret er ukenummer, datoene for lørdag og søndag, hvem som var hvor, og om dere var samlet. Uten `uke:` får
+du de siste helgene, og med `dato:` får du én bestemt dag.
+
 ## Installasjon
 
 **HACS**

@@ -9,6 +9,10 @@ CONF_KALENDER = "kalender"        # calendar.helge_hus
 CONF_PERSONER = "personer"        # [{navn, entity, farge}]
 CONF_FORSINKELSE = "forsinkelse"  # minutter før et opphold regnes som reelt
 CONF_HISTORIKK = "historikk"      # hvor mange dager bakover vi leser kalenderen
+CONF_ROLLE = "rolle"              # hjem | hytte – Oslo er hjemme, Strömstad og Toten er hytter
+
+ROLLE_HJEM = "hjem"
+ROLLE_HYTTE = "hytte"
 
 STD_FORSINKELSE = 10
 STD_HISTORIKK = 400

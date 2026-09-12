@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from datetime import date, timedelta
+
+import voluptuous as vol
+
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 
 from .const import DOMAIN, PLATFORMS
-from .coordinator import HytteMotor
+from .coordinator import HytteMotor, helger, hvem_hvor
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -31,6 +35,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await m.skriv_opphold(p, call.data["fra"], call.data.get("til") or call.data["fra"])
             await m._les_kalender(None)
 
+    async def hvor_var_vi(call: ServiceCall) -> dict:
+        """Svarer på hvor hver person var – en gitt uke, eller en gitt dato."""
+        motorer = list(hass.data[DOMAIN].values())
+        if call.data.get("dato"):
+            dag = date.fromisoformat(str(call.data["dato"])[:10])
+            return {"dato": dag.isoformat(), "personer": hvem_hvor(motorer, dag)}
+        uke = int(call.data.get("uke") or 0)
+        aar = int(call.data.get("aar") or date.today().year)
+        if uke:
+            lordag = date.fromisocalendar(aar, uke, 6)
+            rad = next((r for r in helger(motorer, 60)
+                        if r["uke"] == uke and r["aar"] == aar), None)
+            if rad is None:
+                rad = {"uke": uke, "aar": aar, "lordag": lordag.isoformat(),
+                       "sondag": (lordag + timedelta(days=1)).isoformat(),
+                       "personer": hvem_hvor(motorer, lordag)}
+            return rad
+        return {"helger": helger(motorer, int(call.data.get("antall") or 8))}
+
+    hass.services.async_register(DOMAIN, "hvor_var_vi", hvor_var_vi,
+                                 schema=vol.Schema({
+                                     vol.Optional("uke"): vol.Coerce(int),
+                                     vol.Optional("aar"): vol.Coerce(int),
+                                     vol.Optional("dato"): str,
+                                     vol.Optional("antall"): vol.Coerce(int),
+                                 }),
+                                 supports_response=SupportsResponse.ONLY)
     hass.services.async_register(DOMAIN, "les_kalender", les)
     hass.services.async_register(DOMAIN, "registrer_opphold", registrer)
     return True

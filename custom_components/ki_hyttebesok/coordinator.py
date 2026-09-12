@@ -17,7 +17,16 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_FORSINKELSE, CONF_HISTORIKK, DOMAIN, FARGER, STD_FORSINKELSE, STD_HISTORIKK
+from .const import (
+    CONF_FORSINKELSE,
+    CONF_HISTORIKK,
+    CONF_ROLLE,
+    DOMAIN,
+    FARGER,
+    ROLLE_HJEM,
+    STD_FORSINKELSE,
+    STD_HISTORIKK,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +75,7 @@ class HytteMotor:
         self.hass = hass
         self.oppsett = oppsett
         self.sted: str = oppsett.get("sted") or "Hytta"
+        self.rolle: str = oppsett.get(CONF_ROLLE) or "hytte"   # hjem | hytte
         self.kalender: str = oppsett.get("kalender") or ""
         self.personer: list[Person] = []
         self.opphold: list[Opphold] = []
@@ -280,7 +290,7 @@ class HytteMotor:
         fra, til = nå - timedelta(days=200), nå + timedelta(days=200)
         her = self.her_naa()
         return {
-            "sted": self.sted, "kalender": self.kalender,
+            "sted": self.sted, "rolle": self.rolle, "kalender": self.kalender,
             "her_naa": [{"navn": p.navn, "farge": p.farge, "siden": p.ankom} for p in her],
             "personer": [{
                 "navn": p.navn, "farge": p.farge, "entity": p.entity, "her": self._pa_stedet(p),
@@ -296,6 +306,59 @@ class HytteMotor:
             "dager": self.dager(fra, til),
             "feil": self.feil, "sist_lest": self.sist_lest,
         }
+
+
+def hvem_hvor(motorer: list["HytteMotor"], dag: date) -> dict[str, str]:
+    """Hvor hver person var en bestemt dag. Hytteoppholdene teller først,
+    og den som ikke var på noen hytte regnes som hjemme."""
+    ut: dict[str, str] = {}
+    hjem = next((m for m in motorer if m.rolle == ROLLE_HJEM), None)
+    for m in motorer:
+        if m.rolle == ROLLE_HJEM:
+            continue
+        for o in m.opphold:
+            if o.start <= dag <= o.slutt:
+                ut[o.person] = m.sted
+        # opphold som pågår nå og ikke er skrevet til kalenderen ennå
+        for p in m.her_naa():
+            start = date.fromisoformat(p.ankom) if p.ankom else dt_util.now().date()
+            if start <= dag <= dt_util.now().date():
+                ut[p.navn] = m.sted
+    if hjem:
+        for p in hjem.personer:
+            ut.setdefault(p.navn, hjem.sted)
+    return ut
+
+
+def helger(motorer: list["HytteMotor"], antall: int = 16) -> list[dict[str, Any]]:
+    """De siste helgene: hvem som var hvor lørdag og søndag.
+    «Uke 32» er ukenummeret lørdagen hører til."""
+    nå = dt_util.now().date()
+    # nærmeste lørdag bakover
+    lordag = nå - timedelta(days=(nå.weekday() - 5) % 7)
+    ut: list[dict[str, Any]] = []
+    for i in range(antall):
+        lor = lordag - timedelta(weeks=i)
+        son = lor + timedelta(days=1)
+        per_person: dict[str, str] = {}
+        for person, sted in hvem_hvor(motorer, lor).items():
+            per_person[person] = sted
+        for person, sted in hvem_hvor(motorer, son).items():
+            if person in per_person and per_person[person] != sted:
+                per_person[person] = f"{per_person[person]} → {sted}"
+            else:
+                per_person.setdefault(person, sted)
+        steder: dict[str, list[str]] = {}
+        for person, sted in per_person.items():
+            steder.setdefault(sted, []).append(person)
+        ut.append({
+            "uke": lor.isocalendar()[1], "aar": lor.isocalendar()[0],
+            "lordag": lor.isoformat(), "sondag": son.isoformat(),
+            "personer": per_person, "steder": steder,
+            "sammen": len(steder) == 1,
+            "hovedsted": max(steder, key=lambda k: len(steder[k])) if steder else None,
+        })
+    return ut
 
 
 def _dato(x: Any) -> date | None:

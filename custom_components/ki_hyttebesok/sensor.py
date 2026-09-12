@@ -5,14 +5,21 @@ from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
-from .const import ATTR_INTEGRASJON, ATTR_TYPE, DOMAIN
+from .const import ATTR_INTEGRASJON, ATTR_TYPE, DOMAIN, ROLLE_HJEM
+from .coordinator import helger, hvem_hvor
 from .entity import HytteEntitet
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, add: AddEntitiesCallback) -> None:
     motor = hass.data[DOMAIN][entry.entry_id]
     ut: list[SensorEntity] = [Oversikt(motor), Netter(motor), Siste(motor), Neste(motor), HerNaa(motor)]
+    # helgeoversikten lages av hjemme-oppføringen, eller av den første hvis ingen er merket
+    alle = list(hass.data[DOMAIN].values())
+    hjem = next((m for m in alle if m.rolle == ROLLE_HJEM), alle[0] if alle else None)
+    if hjem is motor:
+        ut.append(Helger(motor, hass))
     for p in motor.personer:
         ut.append(PersonNetter(motor, p))
     add(ut)
@@ -123,3 +130,36 @@ class HerNaa(HytteEntitet, SensorEntity):
     def extra_state_attributes(self) -> dict:
         return {ATTR_INTEGRASJON: DOMAIN, ATTR_TYPE: "her",
                 "personer": [p.navn for p in self.motor.her_naa()]}
+
+
+class Helger(HytteEntitet, SensorEntity):
+    """Hvor var vi i helgene? Ser på alle stedene under ett."""
+
+    _attr_icon = "mdi:calendar-weekend"
+
+    def __init__(self, motor, hass) -> None:
+        super().__init__(motor, "helger", "Helger")
+        self.hass_ref = hass
+
+    def _motorer(self) -> list:
+        return list(self.hass_ref.data[DOMAIN].values())
+
+    @property
+    def native_value(self) -> str:
+        rader = helger(self._motorer(), 1)
+        if not rader:
+            return "—"
+        r = rader[0]
+        return r["hovedsted"] or "—"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        rader = helger(self._motorer(), 16)
+        i_dag = hvem_hvor(self._motorer(), dt_util.now().date())
+        return {
+            ATTR_INTEGRASJON: DOMAIN, ATTR_TYPE: "helger",
+            "helger": rader,
+            "hvor_er_vi_naa": i_dag,
+            "steder": [{"sted": m.sted, "rolle": m.rolle} for m in self._motorer()],
+            "personer": sorted({p.navn for m in self._motorer() for p in m.personer}),
+        }

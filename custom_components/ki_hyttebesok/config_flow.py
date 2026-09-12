@@ -11,6 +11,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_FORSINKELSE,
+    CONF_ROLLE,
     CONF_HISTORIKK,
     CONF_KALENDER,
     CONF_PERSONER,
@@ -25,6 +26,9 @@ def _skjema(d: dict[str, Any] | None = None) -> vol.Schema:
     d = d or {}
     return vol.Schema({
         vol.Required(CONF_STED, default=d.get(CONF_STED, "")): str,
+        vol.Required(CONF_ROLLE, default=d.get(CONF_ROLLE, "hytte")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[
+                {"value": "hjem", "label": "Hjemme"}, {"value": "hytte", "label": "Hytte"}], mode="list")),
         vol.Required(CONF_KALENDER, default=d.get(CONF_KALENDER, "")): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="calendar")),
         vol.Required("brytere", default=[p.get("entity") for p in (d.get(CONF_PERSONER) or [])]):

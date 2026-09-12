@@ -3,18 +3,21 @@
     "step": {
       "user": {
         "title": "KI Hyttebesøk",
-        "description": "Ett oppsett per sted. Bruker du samme Google-kalender for flere steder, merkes hendelsene med stedsnavnet.",
+        "description": "Ett oppsett per sted. Merk hjemmet som «Hjemme» og hyttene som «Hytte» – da vet integrasjonen at den som ikke er på en hytte, er hjemme. Bruker du samme Google-kalender for flere steder, merkes hendelsene med stedsnavnet.",
         "data": {
           "sted": "Sted (Strömstad, Toten, Oslo …)",
           "kalender": "Kalender",
           "brytere": "Brytere som sier hvem som er på stedet",
           "navn": "Navn i samme rekkefølge, skilt med komma",
           "forsinkelse": "Minutter før avreise regnes som ekte",
-          "historikk": "Dager med historikk som leses"
+          "historikk": "Dager med historikk som leses",
+          "rolle": "Hjemme eller hytte"
         }
       }
     },
-    "abort": { "already_configured": "Dette stedet er allerede satt opp." }
+    "abort": {
+      "already_configured": "Dette stedet er allerede satt opp."
+    }
   },
   "options": {
     "step": {
@@ -26,7 +29,8 @@
           "brytere": "Brytere som sier hvem som er på stedet",
           "navn": "Navn i samme rekkefølge, skilt med komma",
           "forsinkelse": "Minutter før avreise regnes som ekte",
-          "historikk": "Dager med historikk som leses"
+          "historikk": "Dager med historikk som leses",
+          "rolle": "Hjemme eller hytte"
         }
       }
     }
