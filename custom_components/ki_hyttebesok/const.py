@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DOMAIN = "ki_hyttebesok"
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "button"]
 
 CONF_STED = "sted"                # Strömstad, Toten, Oslo …
 CONF_KALENDER = "kalender"        # calendar.helge_hus

@@ -7,7 +7,7 @@ REPO=~/Documents/HomeAssistant/ki-hyttebes-k
 cd ~/Downloads
 rm -rf "ki-hyttebesok-$V" && unzip -oq "ki-hyttebesok-$V.zip" -d "ki-hyttebesok-$V"
 [ -d "$REPO/.git" ] || git clone -q https://github.com/SebastianKristo/ki-hyttebes-k.git "$REPO"
-cp -r "ki-hyttebesok-$V/ki-hyttebes-k/." "$REPO/"
+cp -r "ki-hyttebesok-$V/ki-hyttebesok/." "$REPO/"
 cd "$REPO"
 perl -pi -e "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" custom_components/ki_hyttebesok/manifest.json
 git add .

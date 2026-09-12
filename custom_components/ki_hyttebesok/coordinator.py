@@ -71,6 +71,7 @@ class HytteMotor:
         self.opphold: list[Opphold] = []
         self.kommende: list[dict[str, Any]] = []
         self.feil: str | None = None
+        self.sist_lest: str | None = None
         self._av: list[Any] = []
         self._lyttere: list[Any] = []
         self._lager = Store(hass, 1, f"{DOMAIN}_{re.sub(r'[^a-z0-9]+', '_', self.sted.lower())}")
@@ -193,6 +194,7 @@ class HytteMotor:
             self.feil = str(feil)
             return
         self.feil = None
+        self.sist_lest = dt_util.now().isoformat(timespec="minutes")
         hendelser = (svar or {}).get(self.kalender, {}).get("events", [])
         opphold: list[Opphold] = []
         kommende: list[dict[str, Any]] = []
@@ -292,7 +294,7 @@ class HytteMotor:
             "opphold": [o.som_dict() for o in self.opphold[:40]],
             "per_maaned": self.per_maaned(),
             "dager": self.dager(fra, til),
-            "feil": self.feil,
+            "feil": self.feil, "sist_lest": self.sist_lest,
         }
 
 
