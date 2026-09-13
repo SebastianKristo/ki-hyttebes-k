@@ -17,7 +17,9 @@ from .const import (
     CONF_KALENDER,
     CONF_PERSONER,
     CONF_STED,
+    CONF_HJEMME_KILDE,
     DOMAIN,
+    KILDE_AUTO,
     STD_FORSINKELSE,
     STD_HISTORIKK,
 )
@@ -36,6 +38,11 @@ def _skjema(d: dict[str, Any] | None = None) -> vol.Schema:
             selector.EntitySelector(selector.EntitySelectorConfig(
                 domain=["switch", "binary_sensor", "input_boolean", "person", "device_tracker"], multiple=True)),
         vol.Optional("navn", default=", ".join(p.get("navn", "") for p in (d.get(CONF_PERSONER) or []))): str,
+        vol.Optional(CONF_HJEMME_KILDE, default=d.get(CONF_HJEMME_KILDE, KILDE_AUTO)): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[
+                {"value": "auto", "label": "Auto – kalenderen hvis den har hendelser, ellers fravær"},
+                {"value": "fravaer", "label": "Fravær – alle netter ingen var på en hytte"},
+                {"value": "kalender", "label": "Kalender – bare det som er skrevet"}], mode="dropdown")),
         vol.Optional(CONF_SKRIV, default=d.get(CONF_SKRIV, bool(d.get(CONF_PERSONER)))): bool,
         vol.Optional(CONF_FORSINKELSE, default=d.get(CONF_FORSINKELSE, STD_FORSINKELSE)): vol.Coerce(int),
         vol.Optional(CONF_HISTORIKK, default=d.get(CONF_HISTORIKK, STD_HISTORIKK)): vol.Coerce(int),

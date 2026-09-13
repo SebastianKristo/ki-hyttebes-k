@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -21,6 +22,10 @@ from .const import (
     CONF_FORSINKELSE,
     CONF_SKRIV,
     CONF_HISTORIKK,
+    CONF_HJEMME_KILDE,
+    KILDE_AUTO,
+    KILDE_FRAVAER,
+    KILDE_KALENDER,
     CONF_ROLLE,
     DOMAIN,
     FARGER,
@@ -81,8 +86,8 @@ class Opphold:
         return max(1, (self.slutt - self.start).days + 1)
 
     def som_dict(self) -> dict[str, Any]:
-        return {"person": self.person, "start": self.start.isoformat(), "slutt": self.slutt.isoformat(),
-                "netter": self.netter, "tittel": self.tittel}
+        return {"person": self.person or "Ukjent", "start": self.start.isoformat(),
+                "slutt": self.slutt.isoformat(), "netter": self.netter, "tittel": self.tittel}
 
 
 class HytteMotor:
@@ -104,6 +109,10 @@ class HytteMotor:
         self.kommende: list[dict[str, Any]] = []
         self.feil: str | None = None
         self.sist_lest: str | None = None
+        self._klar = False          # settes når plattformene er satt opp
+        self._laster_paa_nytt = False
+        self._titler: list[str] = []
+        self._antall_hendelser = 0
         self._av: list[Any] = []
         self._lyttere: list[Any] = []
         self._lager = Store(hass, 1, f"{DOMAIN}_{re.sub(r'[^a-z0-9]+', '_', self.sted.lower())}")
@@ -121,6 +130,12 @@ class HytteMotor:
             self._av.append(async_track_state_change_event(self.hass, fulgte, self._endret))
         self._av.append(async_track_time_interval(self.hass, self._les_kalender, LES_INTERVALL))
         await self._les_kalender(None)
+        if self.feil or not self.opphold:
+            # Kalenderintegrasjonen er ofte ikke lastet ennå når vi starter. Uten dette
+            # sto stedet tomt til neste lesing et kvarter senere – og personsensorene,
+            # som lages bare én gang, ble aldri opprettet i det hele tatt.
+            self._av.append(self.hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED, self._les_kalender))
 
     async def stopp(self) -> None:
         for av in self._av:
@@ -146,7 +161,7 @@ class HytteMotor:
             # ingen brytere: navnene kommer fra kalenderhendelsene
             navn = []
             for o in self.opphold:
-                if o.person not in navn:
+                if o.person and o.person not in navn:
                     navn.append(o.person)
             for k in self.kommende:
                 if k.get("person") and k["person"] not in navn:
@@ -267,6 +282,8 @@ class HytteMotor:
         self.feil = None
         self.sist_lest = dt_util.now().isoformat(timespec="minutes")
         hendelser = (svar or {}).get(self.kalender, {}).get("events", [])
+        self._antall_hendelser = len(hendelser)
+        self._titler = [str(h.get("summary") or "") for h in hendelser[:15]]
         opphold: list[Opphold] = []
         kommende: list[dict[str, Any]] = []
         navn = {nokkel(p.navn): p for p in self.personer}
@@ -279,9 +296,7 @@ class HytteMotor:
             if not s:
                 continue
             siste = (e - timedelta(days=1)) if e and e > s else s
-            # «Sted – Navn» kan være skrevet med tankestrek, bindestrek eller kolon
-            hvem = next((p.navn for k, p in navn.items() if k and k in nokkel(tittel)),
-                        re.split(r"[–—:-]", tittel)[-1].strip() or tittel.strip())
+            hvem = self._person_i(tittel, navn)
             if s > nå.date():
                 kommende.append({"person": hvem, "start": s.isoformat(), "slutt": siste.isoformat(),
                                  "netter": max(1, (siste - s).days + 1), "tittel": tittel})
@@ -289,14 +304,24 @@ class HytteMotor:
                 opphold.append(Opphold(person=hvem, start=s, slutt=siste, tittel=tittel))
         opphold.sort(key=lambda x: x.start, reverse=True)
         kommende.sort(key=lambda x: x["start"])
-        # Hjemme uten egne hendelser: regn oppholdene som dagene ingen hytte dekker.
-        # Dette er reserven for oppsett der hjemmet ikke føres i kalenderen.
-        if self.rolle == ROLLE_HJEM and not opphold and self.personer:
-            opphold = self._hjemmeopphold()
+        # Hjemmenettene: fra kalenderen, fra fravær (dagene ingen hytte dekker), eller
+        # «auto» som var den gamle oppførselen. Auto vipper fra flere hundre netter til
+        # det som tilfeldigvis er skrevet i det den første hjemmehendelsen dukker opp,
+        # og da kan to instanser vise ulike tall for samme sted.
+        self.hjemme_kilde = ""
+        if self.rolle == ROLLE_HJEM and self.personer:
+            valg = self.oppsett.get(CONF_HJEMME_KILDE) or KILDE_AUTO
+            if valg == KILDE_FRAVAER or (valg == KILDE_AUTO and not opphold):
+                opphold = self._hjemmeopphold()
+                self.hjemme_kilde = KILDE_FRAVAER
+            else:
+                self.hjemme_kilde = KILDE_KALENDER
         self.opphold, self.kommende = opphold, kommende
+        for_navn = {p.navn for p in self.personer}
         if not (self.oppsett.get("personer") or []):
             self._les_personer()
         self._varsle()
+        self._sjekk_nye_personer(for_navn)
         if self.rolle != ROLLE_HJEM:
             self._oppdater_hjemme()
 
@@ -315,6 +340,42 @@ class HytteMotor:
                 continue          # hjemstedet har egne kalenderhendelser – de gjelder
             m.opphold = m._hjemmeopphold()
             m._varsle()
+
+    def _sjekk_nye_personer(self, for_navn: set) -> None:
+        """Laster oppføringen på nytt når kalenderen avslører personer vi ikke hadde.
+
+        Personsensorene lages én gang, ved oppstart. Ga den første lesingen ingenting —
+        typisk fordi kalenderintegrasjonen ikke var lastet ennå — fantes det ingen
+        personer da entitetene ble opprettet, og senere lesinger kunne ikke lage dem.
+        Da ble «Netter <navn>» stående som utilgjengelig til neste omstart.
+        """
+        nye = {p.navn for p in self.personer} - for_navn
+        if not nye or getattr(self, "entry", None) is None:
+            return
+        if not self._klar or self._laster_paa_nytt:
+            return          # under oppstart lages entitetene uansett rett etterpå
+        self._laster_paa_nytt = True
+        _LOGGER.info("KI Hyttebesøk %s: fant %s i kalenderen, laster på nytt så de får sensorer",
+                     self.sted, ", ".join(sorted(nye)))
+        self.hass.config_entries.async_schedule_reload(self.entry.entry_id)
+
+    def _person_i(self, tittel: str, kjente: dict) -> str:
+        """Hvem hendelsen «Sted – Navn» gjelder. Tom streng når tittelen ikke sier det.
+
+        Reservenavnet tok tidligere alt etter skilletegnet, og sto det bare «Strömstad»
+        i tittelen, ble stedet selv til en person med egen netter-sensor.
+        """
+        for k, p in kjente.items():
+            if k and k in nokkel(tittel):
+                return p.navn
+        # «Sted – Navn»: bare det som står etter et skilletegn kan være et navn
+        biter = re.split(r"[–—:|-]", tittel)
+        if len(biter) < 2:
+            return ""
+        rest = biter[-1].strip()
+        if not rest or nokkel(rest) == nokkel(self.sted) or not nokkel(rest):
+            return ""
+        return rest
 
     # ------------------------------------------------------------------ tall ut
     def _mine(self, person: str | None):
@@ -428,6 +489,10 @@ class HytteMotor:
         her = self.her_naa()
         return {
             "sted": self.sted, "rolle": self.rolle, "skriver": self.skriver, "kalender": self.kalender,
+            "hjemme_kilde": getattr(self, "hjemme_kilde", ""),
+            "lest_hendelser": self._antall_hendelser,
+            "titler": self._titler,
+            "kjente_personer": [p.navn for p in self.personer],
             "her_naa": [{"navn": p.navn, "farge": p.farge, "siden": p.ankom} for p in her],
             "personer": [{
                 "navn": p.navn, "farge": p.farge, "entity": p.entity, "her": self._pa_stedet(p),

@@ -63,3 +63,107 @@ def test_slug_er_uendret_for_vanlige_navn():
     from custom_components.ki_hyttebesok.coordinator import Person
     assert Person(navn="Rune", entity="").slug == "rune"
     assert Person(navn="Cybele", entity="").slug == "cybele"
+
+
+def test_stedsnavn_blir_ikke_en_person():
+    """«Strömstad» alene i tittelen skal ikke gi en person som heter Strömstad."""
+    m = _motor("hytte")
+    m.sted = "Strömstad"
+    assert m._person_i("Strömstad", {}) == ""
+    assert m._person_i("Strömstad – Strömstad", {}) == ""
+    assert m._person_i("Strömstad – Rune", {}) == "Rune"
+    assert m._person_i("Strömstad - Cybele", {}) == "Cybele"
+    assert m._person_i("Strömstad: Sebastian", {}) == "Sebastian"
+
+
+def test_kjent_person_vinner_over_reservenavnet():
+    from custom_components.ki_hyttebesok.coordinator import nokkel
+    m = _motor("hytte")
+    m.sted = "Strömstad"
+    kjente = {nokkel("Rune"): Person(navn="Rune", entity="switch.rune")}
+    assert m._person_i("Strömstad – rune", kjente) == "Rune"
+
+
+def test_opphold_uten_navn_teller_fortsatt_for_stedet():
+    m = _motor("hytte")
+    m.opphold = [Opphold(person="", start=date(2026, 5, 1), slutt=date(2026, 5, 2))]
+    with patch("custom_components.ki_hyttebesok.coordinator.dt_util") as dt:
+        dt.now.return_value.year = 2026
+        assert m.netter() == 2
+        assert m.opphold[0].som_dict()["person"] == "Ukjent"
+
+
+def _sett_opp(m, kalenderopphold, hytteopphold=None):
+    """Kjører hjemme-valget slik _les_kalender gjør, uten å gå via kalender-API-et."""
+    from custom_components.ki_hyttebesok.const import CONF_HJEMME_KILDE, KILDE_AUTO
+    from custom_components.ki_hyttebesok.coordinator import ROLLE_HJEM
+    opphold = list(kalenderopphold)
+    m.hjemme_kilde = ""
+    if m.rolle == ROLLE_HJEM and m.personer:
+        valg = m.oppsett.get(CONF_HJEMME_KILDE) or KILDE_AUTO
+        if valg == "fravaer" or (valg == KILDE_AUTO and not opphold):
+            opphold = hytteopphold or []
+            m.hjemme_kilde = "fravaer"
+        else:
+            m.hjemme_kilde = "kalender"
+    m.opphold = opphold
+    return m
+
+
+def test_auto_vipper_nar_forste_hjemmehendelse_kommer():
+    """Regresjonen: én hendelse i kalenderen tok Oslo fra hundrevis av netter til 1."""
+    avledet = [Opphold(person="Cybele", start=date(2026, 1, 1), slutt=date(2026, 9, 1))]
+    tom = _sett_opp(_motor("hjem"), [], avledet)
+    assert tom.hjemme_kilde == "fravaer"
+
+    en_hendelse = [Opphold(person="Cybele", start=date(2026, 9, 12), slutt=date(2026, 9, 12))]
+    med = _sett_opp(_motor("hjem"), en_hendelse, avledet)
+    assert med.hjemme_kilde == "kalender"
+
+
+def test_fravaer_star_fast_selv_med_hendelser():
+    m = _motor("hjem")
+    m.oppsett["hjemme_kilde"] = "fravaer"
+    avledet = [Opphold(person="Cybele", start=date(2026, 1, 1), slutt=date(2026, 9, 1))]
+    _sett_opp(m, [Opphold(person="Cybele", start=date(2026, 9, 12), slutt=date(2026, 9, 12))], avledet)
+    assert m.hjemme_kilde == "fravaer"
+    with patch("custom_components.ki_hyttebesok.coordinator.dt_util") as dt:
+        dt.now.return_value.year = 2026
+        assert m.netter("Cybele") > 200
+
+
+def test_ny_person_i_kalenderen_utloser_omlasting():
+    """Personsensorene lages én gang – dukker noen opp senere, må oppføringen lastes på nytt."""
+    m = _motor("hytte")
+    m.entry = MagicMock(entry_id="abc")
+    m.hass = MagicMock()
+    m._klar = True
+    m.personer = [Person(navn="Rune", entity="")]
+    m._sjekk_nye_personer({"Rune"})
+    m.hass.config_entries.async_schedule_reload.assert_not_called()
+
+    m.personer = [Person(navn="Rune", entity=""), Person(navn="Cybele", entity="")]
+    m._sjekk_nye_personer({"Rune"})
+    m.hass.config_entries.async_schedule_reload.assert_called_once_with("abc")
+
+
+def test_ingen_omlasting_for_plattformene_er_klare():
+    m = _motor("hytte")
+    m.entry = MagicMock(entry_id="abc")
+    m.hass = MagicMock()
+    m._klar = False
+    m.personer = [Person(navn="Cybele", entity="")]
+    m._sjekk_nye_personer(set())
+    m.hass.config_entries.async_schedule_reload.assert_not_called()
+
+
+def test_omlasting_skjer_bare_en_gang():
+    m = _motor("hytte")
+    m.entry = MagicMock(entry_id="abc")
+    m.hass = MagicMock()
+    m._klar = True
+    m.personer = [Person(navn="Cybele", entity="")]
+    m._sjekk_nye_personer(set())
+    m.personer.append(Person(navn="Sebastian", entity=""))
+    m._sjekk_nye_personer({"Cybele"})
+    assert m.hass.config_entries.async_schedule_reload.call_count == 1

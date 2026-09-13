@@ -10,6 +10,11 @@ CONF_PERSONER = "personer"        # [{navn, entity, farge}]
 CONF_FORSINKELSE = "forsinkelse"  # minutter før et opphold regnes som reelt
 CONF_HISTORIKK = "historikk"      # hvor mange dager bakover vi leser kalenderen
 CONF_ROLLE = "rolle"              # hjem | hytte – Oslo er hjemme, Strömstad og Toten er hytter
+CONF_HJEMME_KILDE = "hjemme_kilde"   # hvor hjemmenettene kommer fra
+KILDE_AUTO = "auto"                  # kalenderhendelser hvis det finnes noen, ellers fravær
+KILDE_KALENDER = "kalender"          # bare det som står i kalenderen
+KILDE_FRAVAER = "fravaer"            # alltid: dagene ingen var på en hytte
+
 CONF_SKRIV = "skriv"              # registrerer denne instansen opphold her, eller leser den bare?
 
 ROLLE_HJEM = "hjem"

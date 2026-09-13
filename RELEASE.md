@@ -1,5 +1,63 @@
 ## Nytt
 
+**2.4.1 — «Netter <navn>: Utilgjengelig»**
+
+Personsensorene lages én gang, når plattformene settes opp. Ga den første kalenderlesingen
+ingenting — typisk fordi kalenderintegrasjonen ikke var lastet ennå ved oppstart — fantes
+det ingen personer på det tidspunktet, og senere lesinger kunne ikke opprette sensorene i
+ettertid. De fra forrige kjøring ble stående som utilgjengelige til neste omstart, mens
+«Netter i år» og «Siste besøk» fylte seg helt normalt.
+
+* Dukker det opp personer i kalenderen som vi ikke hadde, lastes oppføringen på nytt, én
+  gang, så de får sensorer med en gang.
+* Gir den første lesingen ingen opphold, eller feiler den, leses kalenderen om igjen når
+  Home Assistant melder seg ferdig startet — i stedet for å vente et kvarter.
+
+Oversiktssensoren har fått tre felt til diagnose: `lest_hendelser` (hvor mange hendelser
+kalenderen faktisk ga), `titler` (de femten første, rå) og `kjente_personer`. Står et sted
+tomt, er det der du ser hvorfor.
+
+
+**2.4.0 — hjemmenettene vippet mellom to helt ulike tall**
+
+Hjemmenettene ble regnet ut fra fravær — dagene ingen var registrert på en hytte — men
+bare når kalenderen ikke hadde en eneste hendelse for stedet:
+
+```python
+if self.rolle == ROLLE_HJEM and not opphold and self.personer:
+    opphold = self._hjemmeopphold()
+```
+
+I det den første «Oslo – Navn» havnet i kalenderen, slo stedet om fra et par hundre netter
+til bare det som var skrevet. To instanser kunne derfor vise vidt forskjellige tall for
+samme sted, avhengig av hva hver av dem hadde rukket å lese.
+
+Det er nå et valg i oppsettet, **«Hjemmenetter regnes fra»**:
+
+* **Fravær** — alle netter ingen var på en hytte. Riktig for et hjem dere bor i.
+* **Kalender** — bare det som er skrevet. Riktig for et sted som føres som alle andre.
+* **Auto** — den gamle oppførselen, beholdt som standard så ingenting endrer seg av seg selv.
+
+Oversiktssensoren har fått attributtet `hjemme_kilde`, som sier hvilken av dem som faktisk
+er i bruk. Viser to instanser ulike tall, er det første sted å se.
+
+
+**2.3.3 — stedet ble til en person**
+
+Fant reservenavnet ingen kjent person i tittelen, tok det alt etter skilletegnet — og
+uten skilletegn ble det hele tittelen. En hendelse som bare het «Strömstad» ga derfor en
+person ved navn Strömstad, med egen `sensor.netter_stromstad`, og nettene hennes ble
+lagt til i totalen.
+
+Navnet hentes nå bare når tittelen faktisk har formen «Sted – Navn», og delen etter
+skilletegnet forkastes hvis den er stedsnavnet om igjen. Oppholdet blir stående — noen var
+der — men står som «Ukjent» i lista og lager ingen personsensor. Tankestrek, bindestrek,
+kolon og loddrett strek godtas som skilletegn.
+
+Rydd vekk `sensor.netter_stromstad` og tilsvarende manuelt i entitetsregisteret etter
+oppgraderingen; de blir liggende som utilgjengelige ellers.
+
+
 **2.3.2 — Strömstad var tomt sett fra Oslo**
 
 Stedsfilteret i `_les_kalender` var en ren delstrengsjekk:

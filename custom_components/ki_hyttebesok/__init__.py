@@ -18,6 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await motor.start()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = motor
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    motor._klar = True        # først nå kan en ny person utløse omlasting
     entry.async_on_unload(entry.add_update_listener(_oppdater))
 
     async def les(call: ServiceCall) -> None:
