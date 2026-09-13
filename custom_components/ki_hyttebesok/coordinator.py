@@ -36,6 +36,19 @@ MAANEDER = ["januar", "februar", "mars", "april", "mai", "juni",
             "juli", "august", "september", "oktober", "november", "desember"]
 
 
+# Tegn som skrives ulikt på hver side av grensen. «Strömstad» fra den svenske
+# instansen og «Strømstad» skrevet på norsk skal treffe hverandre.
+_TEGN = {"ø": "o", "ö": "o", "æ": "a", "ä": "a", "å": "a", "aa": "a", "é": "e", "è": "e", "ü": "u"}
+
+
+def nokkel(tekst: Any) -> str:
+    """Sammenligningsnøkkel: små bokstaver, uten aksenter og uten skilletegn."""
+    t = str(tekst or "").lower()
+    for fra, til in _TEGN.items():
+        t = t.replace(fra, til)
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
 @dataclass
 class Person:
     """En i husstanden, med bryteren som sier om hen er på stedet."""
@@ -48,7 +61,10 @@ class Person:
 
     @property
     def slug(self) -> str:
-        return re.sub(r"[^a-z0-9]+", "_", self.navn.lower().replace("ø", "o").replace("æ", "a").replace("å", "a")).strip("_")
+        t = self.navn.lower()
+        for fra, til in _TEGN.items():
+            t = t.replace(fra, til)
+        return re.sub(r"[^a-z0-9]+", "_", t).strip("_")
 
 
 @dataclass
@@ -164,7 +180,7 @@ class HytteMotor:
     def _i_kalenderen(self, navn: str) -> bool:
         """Er personen registrert her i dag, ifølge kalenderen?"""
         i_dag = dt_util.now().date()
-        return any(o.start <= i_dag <= o.slutt and o.person.lower() == str(navn).lower()
+        return any(o.start <= i_dag <= o.slutt and nokkel(o.person) == nokkel(navn)
                    for o in self.opphold)
 
     def her_naa(self) -> list[Person]:
@@ -253,17 +269,19 @@ class HytteMotor:
         hendelser = (svar or {}).get(self.kalender, {}).get("events", [])
         opphold: list[Opphold] = []
         kommende: list[dict[str, Any]] = []
-        navn = {p.navn.lower(): p for p in self.personer}
+        navn = {nokkel(p.navn): p for p in self.personer}
         for h in hendelser:
             tittel = str(h.get("summary") or "")
-            if self.sted and self.sted.lower() not in tittel.lower():
+            if self.sted and nokkel(self.sted) not in nokkel(tittel):
                 continue                      # hendelser for andre steder i samme kalender
             s = _dato(h.get("start"))
             e = _dato(h.get("end"))
             if not s:
                 continue
             siste = (e - timedelta(days=1)) if e and e > s else s
-            hvem = next((p.navn for k, p in navn.items() if k in tittel.lower()), tittel.split("–")[-1].strip())
+            # «Sted – Navn» kan være skrevet med tankestrek, bindestrek eller kolon
+            hvem = next((p.navn for k, p in navn.items() if k and k in nokkel(tittel)),
+                        re.split(r"[–—:-]", tittel)[-1].strip() or tittel.strip())
             if s > nå.date():
                 kommende.append({"person": hvem, "start": s.isoformat(), "slutt": siste.isoformat(),
                                  "netter": max(1, (siste - s).days + 1), "tittel": tittel})
@@ -279,21 +297,53 @@ class HytteMotor:
         if not (self.oppsett.get("personer") or []):
             self._les_personer()
         self._varsle()
+        if self.rolle != ROLLE_HJEM:
+            self._oppdater_hjemme()
+
+    def _oppdater_hjemme(self) -> None:
+        """Regner hjemmeoppholdene på nytt når en hytte har lest kalenderen sin.
+
+        Hjemme er definert som dagene ingen hytte dekker, så tallet er avhengig av
+        hyttene. Leser hjemstedet først ved oppstart, ser det ingen hytteopphold og
+        regner hele historikkvinduet som ett sammenhengende opphold hjemme – og det
+        ble stående til hjemstedet selv leste på nytt et kvarter senere.
+        """
+        for m in self.hass.data.get(DOMAIN, {}).values():
+            if m is self or getattr(m, "rolle", None) != ROLLE_HJEM or not m.personer:
+                continue
+            if any(o.tittel != "Hjemme" for o in m.opphold):
+                continue          # hjemstedet har egne kalenderhendelser – de gjelder
+            m.opphold = m._hjemmeopphold()
+            m._varsle()
 
     # ------------------------------------------------------------------ tall ut
+    def _mine(self, person: str | None):
+        for o in self.opphold:
+            if person is None or nokkel(o.person) == nokkel(person):
+                yield o
+
+    @staticmethod
+    def _netter_i(o: "Opphold", aar: int) -> int:
+        """Netter i oppholdet som faktisk faller i året.
+
+        Vi kan ikke telle på `o.start.year`: hjemmeoppholdene er sammenhengende blokker
+        over hele historikkvinduet (400 dager), så blokka starter som regel i fjor.
+        Da forsvant alle nettene ut av årets telling, og kortet viste 0.
+        """
+        return sum(1 for i in range(o.netter) if (o.start + timedelta(days=i)).year == aar)
+
     def netter(self, person: str | None = None, aar: int | None = None) -> int:
         aar = aar or dt_util.now().year
-        return sum(o.netter for o in self.opphold
-                   if o.start.year == aar and (person is None or o.person.lower() == person.lower()))
+        return sum(self._netter_i(o, aar) for o in self._mine(person))
 
     def besok(self, person: str | None = None, aar: int | None = None) -> int:
+        """Et opphold over nyttår teller i begge år – det var et besøk i begge."""
         aar = aar or dt_util.now().year
-        return len([o for o in self.opphold
-                    if o.start.year == aar and (person is None or o.person.lower() == person.lower())])
+        return len([o for o in self._mine(person) if self._netter_i(o, aar)])
 
     def siste(self, person: str | None = None) -> Opphold | None:
         for o in self.opphold:
-            if person is None or o.person.lower() == person.lower():
+            if person is None or nokkel(o.person) == nokkel(person):
                 return o
         return None
 
