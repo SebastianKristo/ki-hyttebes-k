@@ -1,5 +1,34 @@
 ## Nytt
 
+**2.5.0 — avreiser ble aldri skrevet, og en tur ut nullstilte «Her nå»**
+
+To feil i posisjonsbryter-logikken, og den første forklarer hvorfor kalenderen har vært
+så tom:
+
+```python
+sist = ny.last_changed or dt_util.utcnow()
+if (dt_util.utcnow() - sist).total_seconds() < minutter * 60:
+    return
+```
+
+`ny.last_changed` er tidspunktet bryteren nettopp slo av. Differansen er derfor alltid
+null sekunder, som alltid er mindre enn forsinkelsen — så avreise-grenen returnerte hver
+eneste gang, og `skriv_opphold` ble aldri kalt fra en bryter. Bare oppholdene du trykket
+inn manuelt med «Lagre pågående opphold» havnet i kalenderen.
+
+Forsinkelsen venter nå faktisk: når bryteren slår av, settes en timer, og etter
+forsinkelsen sjekkes bryteren på nytt. Er personen tilbake, fortsetter oppholdet. Er hen
+fortsatt borte, skrives oppholdet til kalenderen.
+
+Den andre: `_pa_stedet` leste bryteren rått, så en tur rundt kvartalet slo «Her nå» til
+null umiddelbart. Et fravær som er kortere enn forsinkelsen teller nå ikke som avreise,
+så lenge personen hadde et pågående opphold.
+
+Samtidig: mangler bryteren på denne instansen, eller er den `unavailable`, spør vi
+kalenderen i stedet for å svare «borte». Det gjør at et sted man bare leser oppfører seg
+likt uansett om noen har lagt inn en bryter for det eller ikke.
+
+
 **2.4.1 — «Netter <navn>: Utilgjengelig»**
 
 Personsensorene lages én gang, når plattformene settes opp. Ga den første kalenderlesingen

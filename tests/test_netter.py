@@ -167,3 +167,53 @@ def test_omlasting_skjer_bare_en_gang():
     m.personer.append(Person(navn="Sebastian", entity=""))
     m._sjekk_nye_personer({"Cybele"})
     assert m.hass.config_entries.async_schedule_reload.call_count == 1
+
+
+def _person(m, navn="Sebastian", eid="switch.seb", ankom="2026-09-10"):
+    p = Person(navn=navn, entity=eid)
+    p.ankom = ankom
+    m.personer = [p]
+    return p
+
+
+def test_kort_tur_ut_avslutter_ikke_oppholdet():
+    """Bryteren av i ti minutter skal ikke slå «Her nå» til null."""
+    from datetime import datetime, timezone
+    m = _motor("hjem")
+    m.oppsett["forsinkelse"] = 30
+    p = _person(m)
+    st = MagicMock(state="off", last_changed=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc))
+    m.hass.states.get.return_value = st
+    with patch("custom_components.ki_hyttebesok.coordinator.dt_util") as dt:
+        dt.utcnow.return_value = datetime(2026, 9, 13, 12, 10, tzinfo=timezone.utc)
+        assert m._pa_stedet(p) is True          # borte i 10 min av 30
+        dt.utcnow.return_value = datetime(2026, 9, 13, 12, 45, tzinfo=timezone.utc)
+        assert m._pa_stedet(p) is False         # borte i 45 min
+
+
+def test_bryter_pa_er_alltid_her():
+    m = _motor("hjem")
+    p = _person(m)
+    m.hass.states.get.return_value = MagicMock(state="on", last_changed=None)
+    assert m._pa_stedet(p) is True
+
+
+def test_manglende_bryter_faller_tilbake_pa_kalenderen():
+    """Instanser uten stedets brytere skal spørre kalenderen, ikke svare «borte»."""
+    m = _motor("hytte")
+    p = _person(m, navn="Rune", eid="switch.finnes_ikke", ankom=None)
+    m.hass.states.get.return_value = None
+    m.opphold = [Opphold(person="Rune", start=date(2026, 9, 12), slutt=date(2026, 9, 14))]
+    with patch("custom_components.ki_hyttebesok.coordinator.dt_util") as dt:
+        dt.now.return_value.date.return_value = date(2026, 9, 13)
+        assert m._pa_stedet(p) is True
+
+
+def test_utilgjengelig_bryter_teller_ikke_som_borte():
+    m = _motor("hytte")
+    p = _person(m, navn="Rune", eid="switch.rune", ankom=None)
+    m.hass.states.get.return_value = MagicMock(state="unavailable", last_changed=None)
+    m.opphold = []
+    with patch("custom_components.ki_hyttebesok.coordinator.dt_util") as dt:
+        dt.now.return_value.date.return_value = date(2026, 9, 13)
+        assert m._pa_stedet(p) is False        # ingen kalenderdekning heller

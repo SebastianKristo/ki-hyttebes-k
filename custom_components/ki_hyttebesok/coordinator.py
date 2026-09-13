@@ -14,7 +14,11 @@ from typing import Any
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -109,6 +113,7 @@ class HytteMotor:
         self.kommende: list[dict[str, Any]] = []
         self.feil: str | None = None
         self.sist_lest: str | None = None
+        self._venter: set[str] = set()
         self._klar = False          # settes når plattformene er satt opp
         self._laster_paa_nytt = False
         self._titler: list[str] = []
@@ -184,13 +189,29 @@ class HytteMotor:
         await self._lager.async_save({"ankom": {p.slug: p.ankom for p in self.personer if p.ankom}})
 
     # ------------------------------------------------------------ tilstedeværelse
+    def _minutter(self) -> int:
+        return int(self.oppsett.get(CONF_FORSINKELSE) or STD_FORSINKELSE)
+
     def _pa_stedet(self, p: Person) -> bool:
         """Hvert sted har sine egne posisjonsbrytere: på = her, av = borte.
-        Steder denne instansen bare leser, avgjøres av kalenderen."""
+        Steder denne instansen bare leser, avgjøres av kalenderen.
+
+        Et kort fravær teller ikke som avreise. En tur rundt kvartalet slo tidligere
+        «Her nå» rett til null, og oppholdet ble klippet i to.
+        """
         if not p.entity:
             return self._i_kalenderen(p.navn)
         st = self.hass.states.get(p.entity)
-        return bool(st and st.state in ("on", "home", "true"))
+        if st is None or st.state in ("unavailable", "unknown"):
+            # Bryteren finnes ikke på denne instansen – la kalenderen svare
+            return self._i_kalenderen(p.navn)
+        if st.state in ("on", "home", "true"):
+            return True
+        if p.ankom and st.last_changed:
+            borte_s = (dt_util.utcnow() - st.last_changed).total_seconds()
+            if borte_s < self._minutter() * 60:
+                return True
+        return False
 
     def _i_kalenderen(self, navn: str) -> bool:
         """Er personen registrert her i dag, ifølge kalenderen?"""
@@ -238,13 +259,27 @@ class HytteMotor:
         # dro
         if not p.ankom:
             return
-        sist = ny.last_changed or dt_util.utcnow()
-        if (dt_util.utcnow() - sist).total_seconds() < minutter * 60:
+        # Vent ut forsinkelsen og se om de fortsatt er borte. Den gamle koden
+        # sammenlignet med `ny.last_changed`, altså tidspunktet bryteren nettopp slo
+        # av – differansen var alltid null, og avreisen ble forkastet hver gang.
+        self._varsle()
+        if p.slug in self._venter:
             return
-        await self.skriv_opphold(p, p.ankom, dt_util.now().date().isoformat())
-        p.ankom = None
-        await self._lagre()
-        await self._les_kalender(None)
+        self._venter.add(p.slug)
+
+        async def _etterpaa(_naa) -> None:
+            self._venter.discard(p.slug)
+            st = self.hass.states.get(p.entity)
+            if st is not None and st.state in ("on", "home", "true"):
+                return          # kom tilbake – oppholdet fortsetter
+            if not p.ankom:
+                return
+            await self.skriv_opphold(p, p.ankom, dt_util.now().date().isoformat())
+            p.ankom = None
+            await self._lagre()
+            await self._les_kalender(None)
+
+        self._av.append(async_call_later(self.hass, minutter * 60, _etterpaa))
 
     async def skriv_opphold(self, p: Person, fra: str, til: str) -> None:
         """Lager en heldagshendelse i kalenderen. Sluttdato er eksklusiv."""
